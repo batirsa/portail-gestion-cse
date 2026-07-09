@@ -81,6 +81,7 @@ tr:hover td{background:#fafbfc}
 .form-group input,.form-group select,.form-group textarea{padding:8px 11px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:inherit;color:#1a1a1a;background:white;outline:none;transition:border-color .15s}
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--navy)}
 .form-group textarea{resize:vertical;min-height:70px}
+.form-hint{font-size:11px;color:var(--gray);margin-top:2px}
 
 /* BUTTONS */
 .btn{padding:8px 16px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
@@ -220,6 +221,7 @@ tr:hover td{background:#fafbfc}
   <button class="nav-btn" onclick="goPage('rapports',this)">📋 Rapports</button>
   <button class="nav-btn" onclick="goPage('frais',this)">📁 Frais de dossier</button>
   <button class="nav-btn" onclick="goPage('recap',this)">📅 Récap mensuel</button>
+  <button class="nav-btn" id="navAdmin" onclick="goPage('admin',this)" style="display:none">🔐 Administration</button>
 </div>
 
 <div class="main">
@@ -401,6 +403,19 @@ tr:hover td{background:#fafbfc}
   <div class="card"><div style="padding:0"><div class="table-wrap"><table id="tFrais"></table></div></div></div>
 </div>
 
+<!-- ══ ADMINISTRATION DES COMPTES ══ -->
+<div class="page" id="page-admin">
+  <div class="card">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+      <div class="card-title">🔐 Comptes utilisateurs</div>
+      <button class="btn btn-navy btn-sm" onclick="openUserModal()">➕ Nouveau compte</button>
+    </div>
+    <div style="padding:0">
+      <div class="table-wrap"><table id="tUsers"></table></div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /main -->
 
 <!-- ===== TOAST ===== -->
@@ -512,6 +527,57 @@ tr:hover td{background:#fafbfc}
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="fermer('mVersement')">Annuler</button>
       <button class="btn btn-orange" onclick="sauvegarderVersement()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CRÉATION / MODIFICATION DE COMPTE -->
+<div class="modal-overlay" id="mUser">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <div class="modal-title" id="mUserTitle">➕ Nouveau compte</div>
+      <button class="modal-close" onclick="fermer('mUser')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Identifiant *</label>
+        <input id="u_username" placeholder="ex: koffi.jean">
+        <div class="form-hint" id="u_username_hint" style="margin-top:4px">Utilisé pour se connecter — ne peut plus être changé après création.</div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Nom complet *</label>
+        <input id="u_fullName" placeholder="ex: KOFFI Jean">
+      </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Rôle *</label>
+        <select id="u_role" onchange="onUserRoleChange()">
+          <option value="commercial">Commercial</option>
+          <option value="dir_commercial">Directeur Commercial</option>
+          <option value="agent_recouvrement">Agent Recouvrement</option>
+          <option value="recouv">Directrice Recouvrement (lecture seule)</option>
+          <option value="admin">Administrateur</option>
+        </select>
+      </div>
+      <div class="form-group" id="u_agentName_wrap" style="margin-bottom:12px">
+        <label>Nom d'agent (affiché sur les dossiers)</label>
+        <input id="u_agentName" placeholder="ex: Koffi Jean">
+        <div class="form-hint" style="margin-top:4px">Requis pour les rôles Commercial / Directeur Commercial — doit correspondre au nom utilisé dans les dossiers existants.</div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label id="u_password_label">Mot de passe *</label>
+        <input id="u_password" type="text" placeholder="Mot de passe temporaire">
+        <div class="form-hint" id="u_password_hint" style="margin-top:4px">Le compte devra le changer dès sa première connexion.</div>
+      </div>
+      <div class="form-group" id="u_active_wrap" style="display:none">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400">
+          <input type="checkbox" id="u_active" style="width:auto">
+          Compte actif (décoché = accès bloqué)
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="fermer('mUser')">Annuler</button>
+      <button class="btn btn-navy" id="btnUserSave" onclick="saveUser()">💾 Enregistrer</button>
     </div>
   </div>
 </div>
@@ -1105,6 +1171,8 @@ function renderSessionBadge(){
   el.innerHTML = `<span>👤 <b>${currentUser.fullName||currentUser.username}</b> · ${roleLabel}</span><button onclick="logout()">Déconnexion</button>`;
   // La Directrice Recouvrement est en lecture seule côté serveur : on masque les actions d'écriture.
   document.body.classList.toggle('readonly-mode', currentUser.role === 'recouv');
+  const navAdmin = document.getElementById('navAdmin');
+  if(navAdmin) navAdmin.style.display = (currentUser.role === 'admin') ? '' : 'none';
 }
 
 // Charge clients (lecture seule ici — gérés depuis ENREGISTREMENT_SOUSCRIPTION), paiements et stock
@@ -1198,7 +1266,8 @@ function goPage(id, btn){
     alertes:   renderAlertes,
     rapports:  renderRapports,
     frais:     renderFrais,
-    recap:     initRecap
+    recap:     initRecap,
+    admin:     renderAdmin
   })[id]?.();
 }
 
@@ -3819,6 +3888,127 @@ function pdfFraisListe(){
   setTimeout(()=>{w.focus();w.print();},400);
 }
 
+
+// ─────────────────────────────────────────────────────────────────
+// ADMINISTRATION DES COMPTES (rôle admin uniquement)
+// ─────────────────────────────────────────────────────────────────
+let DATA_USERS = [];
+let _editUsername = null;
+const ROLE_LABELS = {
+  commercial: 'Commercial',
+  dir_commercial: 'Directeur Commercial',
+  agent_recouvrement: 'Agent Recouvrement',
+  recouv: 'Directrice Recouvrement',
+  admin: 'Administrateur',
+};
+
+async function renderAdmin(){
+  const tbl = document.getElementById('tUsers');
+  tbl.innerHTML = `<tr><td style="padding:20px;text-align:center;color:var(--gray)">Chargement...</td></tr>`;
+  try{
+    const data = await apiFetch('/users');
+    DATA_USERS = data.users || [];
+  }catch(e){
+    tbl.innerHTML = `<tr><td style="padding:20px;text-align:center;color:var(--danger)">${e.message||'Erreur de chargement.'}</td></tr>`;
+    return;
+  }
+  if(DATA_USERS.length===0){
+    tbl.innerHTML = `<tr><td style="padding:20px;text-align:center;color:var(--gray)">Aucun compte.</td></tr>`;
+    return;
+  }
+  tbl.innerHTML = `
+    <thead><tr>
+      <th>Identifiant</th><th>Nom complet</th><th>Rôle</th><th>Nom d'agent</th><th>Statut</th><th style="width:170px">Actions</th>
+    </tr></thead>
+    <tbody>
+      ${DATA_USERS.map(u=>`
+        <tr>
+          <td><strong>${u.username}</strong></td>
+          <td>${u.fullName}</td>
+          <td>${ROLE_LABELS[u.role]||u.role}</td>
+          <td>${u.agentName||'—'}</td>
+          <td>${u.active!==false ? '<span style="color:var(--success);font-weight:700">● Actif</span>' : '<span style="color:var(--danger);font-weight:700">● Désactivé</span>'}</td>
+          <td>
+            <button class="btn btn-outline btn-sm" onclick="openUserModal('${u.username}')">✏️ Modifier</button>
+            ${u.active!==false
+              ? `<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="toggleUserActive('${u.username}', false)">🚫 Désactiver</button>`
+              : `<button class="btn btn-outline btn-sm" style="color:var(--success);border-color:var(--success)" onclick="toggleUserActive('${u.username}', true)">✅ Réactiver</button>`}
+          </td>
+        </tr>`).join('')}
+    </tbody>`;
+}
+
+function onUserRoleChange(){
+  const role = document.getElementById('u_role').value;
+  const needsAgentName = role==='commercial' || role==='dir_commercial';
+  document.getElementById('u_agentName_wrap').style.display = needsAgentName ? 'block' : 'none';
+}
+
+function openUserModal(username){
+  _editUsername = username || null;
+  const existant = username ? DATA_USERS.find(u=>u.username===username) : null;
+
+  document.getElementById('mUserTitle').textContent = existant ? `✏️ Modifier ${existant.username}` : '➕ Nouveau compte';
+  document.getElementById('u_username').value = existant ? existant.username : '';
+  document.getElementById('u_username').disabled = !!existant;
+  document.getElementById('u_username_hint').style.display = existant ? 'none' : 'block';
+  document.getElementById('u_fullName').value = existant ? existant.fullName : '';
+  document.getElementById('u_role').value = existant ? existant.role : 'commercial';
+  document.getElementById('u_agentName').value = existant ? (existant.agentName||'') : '';
+  document.getElementById('u_password').value = '';
+  document.getElementById('u_password_label').textContent = existant ? 'Nouveau mot de passe' : 'Mot de passe *';
+  document.getElementById('u_password_hint').textContent = existant
+    ? 'Laisser vide pour ne pas changer le mot de passe actuel.'
+    : 'Le compte devra le changer dès sa première connexion.';
+  document.getElementById('u_active_wrap').style.display = existant ? 'block' : 'none';
+  document.getElementById('u_active').checked = existant ? existant.active!==false : true;
+  onUserRoleChange();
+  ouvrir('mUser');
+}
+
+async function saveUser(){
+  const username = document.getElementById('u_username').value.trim().toLowerCase();
+  const fullName = document.getElementById('u_fullName').value.trim();
+  const role = document.getElementById('u_role').value;
+  const agentName = document.getElementById('u_agentName').value.trim();
+  const password = document.getElementById('u_password').value;
+
+  if(!username || !fullName){ toast('Identifiant et nom complet sont obligatoires.','danger'); return; }
+  if((role==='commercial'||role==='dir_commercial') && !agentName){
+    toast("Le nom d'agent est obligatoire pour ce rôle.",'danger'); return;
+  }
+  if(!_editUsername && !password){ toast('Le mot de passe est obligatoire pour un nouveau compte.','danger'); return; }
+
+  const btn = document.getElementById('btnUserSave');
+  btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
+  try{
+    if(_editUsername){
+      const body = { fullName, role, agentName: agentName||null, active: document.getElementById('u_active').checked };
+      if(password) body.password = password;
+      await apiFetch('/users/' + encodeURIComponent(_editUsername), { method:'PUT', body: JSON.stringify(body) });
+      toast(`✅ Compte "${username}" mis à jour.`,'success');
+    } else {
+      await apiFetch('/users', { method:'POST', body: JSON.stringify({ username, password, fullName, role, agentName: agentName||null }) });
+      toast(`✅ Compte "${username}" créé.`,'success');
+    }
+    fermer('mUser');
+    renderAdmin();
+  }catch(e){
+    toast(e.message || "Erreur lors de l'enregistrement.", 'danger');
+  }finally{
+    btn.disabled = false; btn.textContent = '💾 Enregistrer';
+  }
+}
+
+async function toggleUserActive(username, makeActive){
+  try{
+    await apiFetch('/users/' + encodeURIComponent(username), { method:'PUT', body: JSON.stringify({ active: makeActive }) });
+    toast(makeActive ? `Compte "${username}" réactivé.` : `Compte "${username}" désactivé.`, makeActive?'success':'warning');
+    renderAdmin();
+  }catch(e){
+    toast(e.message || 'Erreur.', 'danger');
+  }
+}
 
 // ============================================================
 // INIT
