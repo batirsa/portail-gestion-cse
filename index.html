@@ -564,6 +564,11 @@ tr:hover td{background:#fafbfc}
         <div class="form-hint" style="margin-top:4px">Requis pour les rôles Commercial / Directeur Commercial — doit correspondre au nom utilisé dans les dossiers existants.</div>
       </div>
       <div class="form-group" style="margin-bottom:12px">
+        <label>Titre / Fonction affiché (optionnel)</label>
+        <input id="u_titre" placeholder="ex: Chef d'agence, Directrice Recouvrement...">
+        <div class="form-hint" style="margin-top:4px">Affiché à la place du libellé générique du rôle. Laisser vide pour garder le libellé par défaut.</div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px">
         <label id="u_password_label">Mot de passe *</label>
         <input id="u_password" type="text" placeholder="Mot de passe temporaire">
         <div class="form-hint" id="u_password_hint" style="margin-top:4px">Le compte devra le changer dès sa première connexion.</div>
@@ -1167,7 +1172,7 @@ async function autoRefreshTick(){
 function renderSessionBadge(){
   const el = document.getElementById('sessionBadge');
   if(!el || !currentUser) return;
-  const roleLabel = { agent_recouvrement:'Agent Recouvrement', recouv:'Directrice Recouvrement (lecture seule)', admin:'Administrateur' }[currentUser.role] || currentUser.role;
+  const roleLabel = currentUser.titre || { agent_recouvrement:'Agent Recouvrement', recouv:'Directrice Recouvrement (lecture seule)', admin:'Administrateur' }[currentUser.role] || currentUser.role;
   el.innerHTML = `<span>👤 <b>${currentUser.fullName||currentUser.username}</b> · ${roleLabel}</span><button onclick="logout()">Déconnexion</button>`;
   // La Directrice Recouvrement est en lecture seule côté serveur : on masque les actions d'écriture.
   document.body.classList.toggle('readonly-mode', currentUser.role === 'recouv');
@@ -3918,7 +3923,7 @@ async function renderAdmin(){
   }
   tbl.innerHTML = `
     <thead><tr>
-      <th>Identifiant</th><th>Nom complet</th><th>Rôle</th><th>Nom d'agent</th><th>Statut</th><th style="width:170px">Actions</th>
+      <th>Identifiant</th><th>Nom complet</th><th>Rôle</th><th>Titre affiché</th><th>Nom d'agent</th><th>Statut</th><th style="width:170px">Actions</th>
     </tr></thead>
     <tbody>
       ${DATA_USERS.map(u=>`
@@ -3926,6 +3931,7 @@ async function renderAdmin(){
           <td><strong>${u.username}</strong></td>
           <td>${u.fullName}</td>
           <td>${ROLE_LABELS[u.role]||u.role}</td>
+          <td>${u.titre||'<span style="color:var(--gray)">—</span>'}</td>
           <td>${u.agentName||'—'}</td>
           <td>${u.active!==false ? '<span style="color:var(--success);font-weight:700">● Actif</span>' : '<span style="color:var(--danger);font-weight:700">● Désactivé</span>'}</td>
           <td>
@@ -3955,6 +3961,7 @@ function openUserModal(username){
   document.getElementById('u_fullName').value = existant ? existant.fullName : '';
   document.getElementById('u_role').value = existant ? existant.role : 'commercial';
   document.getElementById('u_agentName').value = existant ? (existant.agentName||'') : '';
+  document.getElementById('u_titre').value = existant ? (existant.titre||'') : '';
   document.getElementById('u_password').value = '';
   document.getElementById('u_password_label').textContent = existant ? 'Nouveau mot de passe' : 'Mot de passe *';
   document.getElementById('u_password_hint').textContent = existant
@@ -3971,6 +3978,7 @@ async function saveUser(){
   const fullName = document.getElementById('u_fullName').value.trim();
   const role = document.getElementById('u_role').value;
   const agentName = document.getElementById('u_agentName').value.trim();
+  const titre = document.getElementById('u_titre').value.trim();
   const password = document.getElementById('u_password').value;
 
   if(!username || !fullName){ toast('Identifiant et nom complet sont obligatoires.','danger'); return; }
@@ -3983,12 +3991,12 @@ async function saveUser(){
   btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
   try{
     if(_editUsername){
-      const body = { fullName, role, agentName: agentName||null, active: document.getElementById('u_active').checked };
+      const body = { fullName, role, agentName: agentName||null, titre: titre||null, active: document.getElementById('u_active').checked };
       if(password) body.password = password;
       await apiFetch('/users/' + encodeURIComponent(_editUsername), { method:'PUT', body: JSON.stringify(body) });
       toast(`✅ Compte "${username}" mis à jour.`,'success');
     } else {
-      await apiFetch('/users', { method:'POST', body: JSON.stringify({ username, password, fullName, role, agentName: agentName||null }) });
+      await apiFetch('/users', { method:'POST', body: JSON.stringify({ username, password, fullName, role, agentName: agentName||null, titre: titre||null }) });
       toast(`✅ Compte "${username}" créé.`,'success');
     }
     fermer('mUser');
