@@ -568,6 +568,13 @@ tr:hover td{background:#fafbfc}
         <input id="u_titre" placeholder="ex: Chef d'agence, Directrice Recouvrement...">
         <div class="form-hint" style="margin-top:4px">Affiché à la place du libellé générique du rôle. Laisser vide pour garder le libellé par défaut.</div>
       </div>
+      <div class="form-group" id="u_accesGestion_wrap" style="margin-bottom:12px;display:none">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400">
+          <input type="checkbox" id="u_accesGestion" style="width:auto">
+          Accès à Gestion & Recouvrement (lecture seule)
+        </label>
+        <div class="form-hint" style="margin-top:4px">Réservé aux Directeurs Commerciaux à qui on veut donner une vue d'ensemble des paiements — décoché par défaut.</div>
+      </div>
       <div class="form-group" style="margin-bottom:12px">
         <label id="u_password_label">Mot de passe *</label>
         <input id="u_password" type="text" placeholder="Mot de passe temporaire">
@@ -1098,8 +1105,11 @@ async function doLogin(){
     authToken = data.token;
     currentUser = data.user;
     localStorage.setItem(TOKEN_KEY, authToken);
-    if(!['agent_recouvrement','recouv','admin'].includes(currentUser.role)){
+    if(!['agent_recouvrement','recouv','dir_commercial','admin'].includes(currentUser.role)){
       throw new Error("Ce compte n'a pas accès au module de gestion & recouvrement.");
+    }
+    if(currentUser.role==='dir_commercial' && !currentUser.accesGestion){
+      throw new Error("Ce compte n'a pas l'autorisation d'accéder à Gestion & Recouvrement. Contactez l'administrateur.");
     }
     await startApp();
   }catch(e){
@@ -1129,8 +1139,11 @@ async function initApp(){
   try{
     const data = await apiFetch('/auth/me');
     currentUser = data.user;
-    if(!['agent_recouvrement','recouv','admin'].includes(currentUser.role)){
+    if(!['agent_recouvrement','recouv','dir_commercial','admin'].includes(currentUser.role)){
       throw new Error('Rôle non autorisé');
+    }
+    if(currentUser.role==='dir_commercial' && !currentUser.accesGestion){
+      throw new Error('Accès Gestion non autorisé pour ce compte');
     }
     await startApp();
   }catch(e){
@@ -1172,10 +1185,10 @@ async function autoRefreshTick(){
 function renderSessionBadge(){
   const el = document.getElementById('sessionBadge');
   if(!el || !currentUser) return;
-  const roleLabel = currentUser.titre || { agent_recouvrement:'Agent Recouvrement', recouv:'Directrice Recouvrement (lecture seule)', admin:'Administrateur' }[currentUser.role] || currentUser.role;
+  const roleLabel = currentUser.titre || { agent_recouvrement:'Agent Recouvrement', recouv:'Directrice Recouvrement (lecture seule)', dir_commercial:'Directeur Commercial (lecture seule)', admin:'Administrateur' }[currentUser.role] || currentUser.role;
   el.innerHTML = `<span>👤 <b>${currentUser.fullName||currentUser.username}</b> · ${roleLabel}</span><button onclick="logout()">Déconnexion</button>`;
-  // La Directrice Recouvrement est en lecture seule côté serveur : on masque les actions d'écriture.
-  document.body.classList.toggle('readonly-mode', currentUser.role === 'recouv');
+  // La Directrice Recouvrement et les Directeurs Commerciaux sont en lecture seule côté serveur : on masque les actions d'écriture.
+  document.body.classList.toggle('readonly-mode', currentUser.role === 'recouv' || currentUser.role === 'dir_commercial');
   const navAdmin = document.getElementById('navAdmin');
   if(navAdmin) navAdmin.style.display = (currentUser.role === 'admin') ? '' : 'none';
 }
@@ -3923,7 +3936,7 @@ async function renderAdmin(){
   }
   tbl.innerHTML = `
     <thead><tr>
-      <th>Identifiant</th><th>Nom complet</th><th>Rôle</th><th>Titre affiché</th><th>Nom d'agent</th><th>Statut</th><th style="width:170px">Actions</th>
+      <th>Identifiant</th><th>Nom complet</th><th>Rôle</th><th>Titre affiché</th><th>Nom d'agent</th><th>Accès Gestion</th><th>Statut</th><th style="width:170px">Actions</th>
     </tr></thead>
     <tbody>
       ${DATA_USERS.map(u=>`
@@ -3933,6 +3946,7 @@ async function renderAdmin(){
           <td>${ROLE_LABELS[u.role]||u.role}</td>
           <td>${u.titre||'<span style="color:var(--gray)">—</span>'}</td>
           <td>${u.agentName||'—'}</td>
+          <td>${u.role==='dir_commercial' ? (u.accesGestion===true ? '<span style="color:var(--success);font-weight:700">✓ Oui</span>' : '<span style="color:var(--gray)">Non</span>') : '<span style="color:var(--gray)">—</span>'}</td>
           <td>${u.active!==false ? '<span style="color:var(--success);font-weight:700">● Actif</span>' : '<span style="color:var(--danger);font-weight:700">● Désactivé</span>'}</td>
           <td>
             <button class="btn btn-outline btn-sm" onclick="openUserModal('${u.username}')">✏️ Modifier</button>
@@ -3948,6 +3962,7 @@ function onUserRoleChange(){
   const role = document.getElementById('u_role').value;
   const needsAgentName = role==='commercial' || role==='dir_commercial';
   document.getElementById('u_agentName_wrap').style.display = needsAgentName ? 'block' : 'none';
+  document.getElementById('u_accesGestion_wrap').style.display = (role==='dir_commercial') ? 'block' : 'none';
 }
 
 function openUserModal(username){
@@ -3962,6 +3977,7 @@ function openUserModal(username){
   document.getElementById('u_role').value = existant ? existant.role : 'commercial';
   document.getElementById('u_agentName').value = existant ? (existant.agentName||'') : '';
   document.getElementById('u_titre').value = existant ? (existant.titre||'') : '';
+  document.getElementById('u_accesGestion').checked = existant ? existant.accesGestion===true : false;
   document.getElementById('u_password').value = '';
   document.getElementById('u_password_label').textContent = existant ? 'Nouveau mot de passe' : 'Mot de passe *';
   document.getElementById('u_password_hint').textContent = existant
@@ -3979,6 +3995,7 @@ async function saveUser(){
   const role = document.getElementById('u_role').value;
   const agentName = document.getElementById('u_agentName').value.trim();
   const titre = document.getElementById('u_titre').value.trim();
+  const accesGestion = role==='dir_commercial' && document.getElementById('u_accesGestion').checked;
   const password = document.getElementById('u_password').value;
 
   if(!username || !fullName){ toast('Identifiant et nom complet sont obligatoires.','danger'); return; }
@@ -3991,12 +4008,12 @@ async function saveUser(){
   btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
   try{
     if(_editUsername){
-      const body = { fullName, role, agentName: agentName||null, titre: titre||null, active: document.getElementById('u_active').checked };
+      const body = { fullName, role, agentName: agentName||null, titre: titre||null, accesGestion, active: document.getElementById('u_active').checked };
       if(password) body.password = password;
       await apiFetch('/users/' + encodeURIComponent(_editUsername), { method:'PUT', body: JSON.stringify(body) });
       toast(`✅ Compte "${username}" mis à jour.`,'success');
     } else {
-      await apiFetch('/users', { method:'POST', body: JSON.stringify({ username, password, fullName, role, agentName: agentName||null, titre: titre||null }) });
+      await apiFetch('/users', { method:'POST', body: JSON.stringify({ username, password, fullName, role, agentName: agentName||null, titre: titre||null, accesGestion }) });
       toast(`✅ Compte "${username}" créé.`,'success');
     }
     fermer('mUser');
