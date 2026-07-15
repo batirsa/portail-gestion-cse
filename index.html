@@ -491,6 +491,31 @@ tr:hover td{background:#fafbfc}
   </div>
 </div>
 
+<!-- ===== MODAL IDENTIFICATION LÉGALE (pour attestation de souscription) ===== -->
+<div class="modal-overlay" id="mIdentification">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Identification légale du client</div>
+      <button class="modal-close" onclick="fermer('mIdentification')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-info">Ces informations sont nécessaires pour émettre l'attestation de souscription. Elles ne sont demandées qu'une seule fois par client.</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Date de naissance</label><input id="id_dateNaissance" type="date"></div>
+        <div class="form-group"><label>Lieu de naissance</label><input id="id_lieuNaissance" placeholder="ex: Abidjan"></div>
+        <div class="form-group"><label>Nationalité</label><input id="id_nationalite" placeholder="ex: Ivoirienne"></div>
+        <div class="form-group"><label>N° CNI / Pièce d'identité</label><input id="id_cni" placeholder="ex: CI 000915537"></div>
+        <div class="form-group"><label>Domicile</label><input id="id_domicile" placeholder="ex: Abidjan, Cocody"></div>
+        <div class="form-group"><label>Employeur actuel</label><input id="id_employeur" placeholder="ex: à son compte"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="fermer('mIdentification')">Annuler</button>
+      <button class="btn btn-orange" onclick="sauvegarderIdentification()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL VERSEMENT ===== -->
 <div class="modal-overlay" id="mVersement">
   <div class="modal">
@@ -1894,6 +1919,14 @@ function ouvrirFiche(id){
       <div class="fiche-item"><span class="fi-label">Étage</span><span class="fi-value">${c.etage||'-'}</span></div>
       ${c.vague?`<div class="fiche-item"><span class="fi-label">Vague de livraison</span><span class="fi-value" style="color:${VAGUE_COLORS[c.vague]};font-weight:700">🏗 ${VAGUE_LABELS[c.vague]}</span></div>`:''}
     </div></div>
+    <div class="fiche-section"><h3>Identification légale (pour attestation) <button class="btn btn-outline btn-sm" style="margin-left:8px;padding:2px 8px;font-size:11px" onclick="ouvrirIdentification('${id}')">✏️ Modifier</button></h3><div class="fiche-grid">
+      <div class="fiche-item"><span class="fi-label">Date de naissance</span><span class="fi-value">${fmtDateFr(c.dateNaissance)}</span></div>
+      <div class="fiche-item"><span class="fi-label">Lieu de naissance</span><span class="fi-value">${c.lieuNaissance||'-'}</span></div>
+      <div class="fiche-item"><span class="fi-label">Nationalité</span><span class="fi-value">${c.nationalite||'-'}</span></div>
+      <div class="fiche-item"><span class="fi-label">N° CNI / Pièce</span><span class="fi-value">${c.cni||'-'}</span></div>
+      <div class="fiche-item"><span class="fi-label">Domicile</span><span class="fi-value">${c.domicile||'-'}</span></div>
+      <div class="fiche-item"><span class="fi-label">Employeur</span><span class="fi-value">${c.employeur||'-'}</span></div>
+    </div></div>
     <div class="fiche-section"><h3>Situation financière</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">
         <div class="stat-card navy" style="margin:0"><div class="stat-label">Coût logement</div><div class="stat-value" style="font-size:15px">${fmtM(c.cout||0)} F</div></div>
@@ -1941,8 +1974,186 @@ function ouvrirFiche(id){
     <button class="btn btn-success btn-sm" onclick="xlsxFiche('${id}')">⬇ Excel</button>
     <button class="btn btn-outline btn-sm" onclick="pdfFiche('${id}')">🖨 PDF</button>
     ${c.vague?`<button class="btn btn-gold btn-sm" onclick="imprimerEcheancier('${id}')">📄 Échéancier</button>`:''}
+    ${c.statutDossier==='Apport soldé'?`<button class="btn btn-navy btn-sm" onclick="genererAttestation('${id}')">🎖 Attestation de souscription</button>`:''}
     <button class="btn btn-orange" onclick="fermer('mFiche');ouvrirAjoutVersement('${id}')">+ Versement</button>`;
   ouvrir('mFiche');
+}
+
+// ============================================================
+// ATTESTATION DE SOUSCRIPTION
+// Générée dès que l'apport initial est entièrement soldé (statutDossier
+// === 'Apport soldé', calculé côté serveur — voir routes/clients.js).
+// Nécessite au préalable les informations d'identité légale du client
+// (naissance, nationalité, CNI, domicile), complétées une seule fois via
+// le mini-formulaire "Identification légale" dans la fiche client.
+// ============================================================
+function fmtDateFr(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d)) return iso;
+  const p = n => String(n).padStart(2,'0');
+  return `${p(d.getDate())} / ${p(d.getMonth()+1)} / ${d.getFullYear()}`;
+}
+
+function fmtDateLongue(d){
+  if(!d || isNaN(d)) return '—';
+  return d.toLocaleDateString('fr-FR', {day:'numeric', month:'long', year:'numeric'});
+}
+
+// Conversion d'un montant en toutes lettres (français), pour les mentions
+// légales du type "Vingt-sept millions cinq cent mille (27 500 000) francs CFA".
+function nombreEnLettres(n){
+  n = Math.round(n||0);
+  if(n===0) return 'zéro';
+  if(n<0) return 'moins ' + nombreEnLettres(-n);
+  const unites = ['','un','deux','trois','quatre','cinq','six','sept','huit','neuf','dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
+  const dizainesMots = ['','dix','vingt','trente','quarante','cinquante','soixante','soixante','quatre-vingt','quatre-vingt'];
+
+  function moinsCent(n){
+    if(n<20) return unites[n];
+    const d = Math.floor(n/10), u = n%10;
+    if(d===7||d===9) return dizainesMots[d] + '-' + unites[10+u];
+    if(u===0) return dizainesMots[d] + (d===8?'s':'');
+    if(u===1 && d!==8) return dizainesMots[d] + ' et un';
+    return dizainesMots[d] + '-' + unites[u];
+  }
+
+  function centainesFn(n, followed){
+    const c = Math.floor(n/100), r = n%100;
+    let s = '';
+    if(c>0){
+      s += (c>1 ? unites[c]+' cent' : 'cent');
+      if(c>1 && r===0 && !followed) s += 's';
+    }
+    if(r>0) s += (s?' ':'') + moinsCent(r);
+    return s;
+  }
+
+  const milliards = Math.floor(n/1e9);
+  const millions = Math.floor((n%1e9)/1e6);
+  const milliers = Math.floor((n%1e6)/1e3);
+  const reste = n%1e3;
+
+  let parts = [];
+  if(milliards) parts.push(centainesFn(milliards, true) + ' ' + (milliards>1?'milliards':'milliard'));
+  if(millions) parts.push(centainesFn(millions, true) + ' ' + (millions>1?'millions':'million'));
+  if(milliers) parts.push(milliers===1 ? 'mille' : centainesFn(milliers, true) + ' mille');
+  if(reste) parts.push(centainesFn(reste, false));
+
+  const phrase = parts.join(' ').replace(/\s+/g,' ').trim();
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+}
+
+function identificationComplete(c){
+  return !!(c.dateNaissance && c.lieuNaissance && c.nationalite && c.cni && c.domicile);
+}
+
+let _identClientId = null;
+let _pendingAttestation = false;
+
+function ouvrirIdentification(clientId, pourAttestation){
+  const c = D.clients.find(x=>x.id===clientId); if(!c) return;
+  _identClientId = clientId;
+  _pendingAttestation = !!pourAttestation;
+  document.getElementById('id_dateNaissance').value = c.dateNaissance || '';
+  document.getElementById('id_lieuNaissance').value = c.lieuNaissance || '';
+  document.getElementById('id_nationalite').value = c.nationalite || 'Ivoirienne';
+  document.getElementById('id_cni').value = c.cni || '';
+  document.getElementById('id_domicile').value = c.domicile || '';
+  document.getElementById('id_employeur').value = c.employeur || '';
+  ouvrir('mIdentification');
+}
+
+async function sauvegarderIdentification(){
+  const c = D.clients.find(x=>x.id===_identClientId); if(!c) return;
+  const maj = {
+    dateNaissance: document.getElementById('id_dateNaissance').value,
+    lieuNaissance: document.getElementById('id_lieuNaissance').value.trim(),
+    nationalite: document.getElementById('id_nationalite').value.trim(),
+    cni: document.getElementById('id_cni').value.trim(),
+    domicile: document.getElementById('id_domicile').value.trim(),
+    employeur: document.getElementById('id_employeur').value.trim(),
+  };
+  try{
+    await apiFetch('/clients/'+encodeURIComponent(c.dossier)+'/identification', { method:'PUT', body: JSON.stringify(maj) });
+    Object.assign(c, maj);
+    fermer('mIdentification');
+    toast('Identification enregistrée.', 'success');
+    if(_pendingAttestation){ _pendingAttestation = false; genererAttestation(_identClientId); }
+    else if(document.getElementById('mFiche').classList.contains('open')) ouvrirFiche(_identClientId);
+  }catch(e){
+    toast(e.message || "Erreur lors de l'enregistrement.", 'danger');
+  }
+}
+
+const TYPE_PIECES = { F2:'02', F3:'03', F4:'04' };
+
+function buildAttestationHTML(c){
+  const dateEmission = fmtDateLongue(new Date());
+  const coutTotalV = coutTotal(c);
+  const apportV = c.apportVerse || 0;
+  const resteV = resteC(c);
+  const fraisV = c.fraisRequis || c.frais || FRAIS_DEF;
+  const echeanceFinale = (c.vague && c.dateSign) ? addMois(c.dateSign, VAGUE_MOIS[c.vague]) : null;
+  const echeanceFinaleStr = echeanceFinale ? fmtDateLongue(echeanceFinale) : '—';
+  const pieces = TYPE_PIECES[c.type] || (c.type||'—');
+
+  return '<div class="att-wrap">'
+    +'<div class="att-head"><div class="att-logo">BÂTIR <span>S.A</span></div>'
+    +'<div class="att-head-sub">Société Immobilière · San-Pédro, Côte d\'Ivoire</div></div>'
+    +'<div class="att-band">ATTESTATION DE SOUSCRIPTION</div>'
+    +'<div class="att-body">'
+      +'<p><strong>BÂTIR-S.A</strong>, Société Immobilière agréée par le Ministère de la Construction, du Logement, de l\'Assainissement et de l\'Urbanisme, sous le numéro 19-00042 /MCLAU /CAB /DGLCV /DL/CAPPI / du 14/05/2019, au capital de deux cent dix millions (210 000 000) de francs CFA, Immatriculée au RCCM sous le numéro CI-ABJ-2010-B-6847 compte contribuable N° 1100496 W, ayant son siège social à ABIDJAN COCODY RIVIERA ATTOBAN, Espace KAYLA, 1<sup>er</sup> ETAGE appartement numéro 2, 06 BP 1975 Abidjan 06, téléphone 22 54 51 65 représentée par monsieur Henri A. BILE, son Administrateur Général, agissant ès-qualités et ayant tout pouvoir aux fins des présentes,</p>'
+      +'<p class="att-atteste"><strong>ATTESTE QUE :</strong></p>'
+      +'<p><strong>M./Mme : '+c.nom+'</strong></p>'
+      +'<p><strong>Né(e) le '+fmtDateFr(c.dateNaissance)+' à '+(c.lieuNaissance||'—')+'</strong></p>'
+      +'<p><strong>De nationalité : '+((c.nationalite||'—').toUpperCase())+' / CNI N° '+(c.cni||'—')+'</strong></p>'
+      +'<p><strong>Domicilié(e) à : '+(c.domicile||'—')+'</strong></p>'
+      +'<p><strong>Fonction actuelle : '+(c.profession||'—')+'</strong></p>'
+      +'<p><strong>Employeur actuel : '+(c.employeur||'—')+'</strong></p>'
+      +'<p><strong>Adresse : '+(c.email||'—')+'</strong></p>'
+      +'<p><strong>Contacts : '+(c.contact||'—')+'</strong></p>'
+      +'<p>A souscrit à la promotion immobilière dénommée <strong>« Cité SAINTE ELISABETH »</strong>, située dans la ville de SAN PEDRO pour l\'acquisition d\'un appartement de '+pieces+' pièces situé au '+(c.etage||'—')+', Ilot '+(c.ilot||'—')+', Bâtiment N°'+(c.bat||'—')+' ; Appartement N°'+(c.appt||'—')+' d\'un montant de <strong>'+nombreEnLettres(coutTotalV)+' ('+fmt(coutTotalV)+')</strong>. Lequel prix ne peut être modifié, sauf en cas d\'augmentation d\'au moins 3% du coût des matériaux de construction ou des conditions économiques et fiscales.</p>'
+      +'<p>Outre les frais d\'ouverture de dossier de <strong>'+fmt(fraisV)+'</strong>, versés entre les mains de BATIR-SA, la somme de <strong>'+nombreEnLettres(apportV)+' ('+fmt(apportV)+')</strong>, au titre de son apport initial et d\'acompte sur le coût du logement, et reste devoir la somme de <strong>'+nombreEnLettres(resteV)+' ('+fmt(resteV)+')</strong>.</p>'
+      +'<p>L\'attestation de souscription fera l\'objet d\'un contrat de réservation ferme et irrévocable après le paiement du reliquat, soit la somme de <strong>'+nombreEnLettres(resteV)+' ('+fmt(resteV)+')</strong>, que <strong>'+c.nom+'</strong> s\'engage à solder par paiement tempéré au plus tard le <strong>'+echeanceFinaleStr+'</strong>.</p>'
+      +'<p>En foi de quoi, la présente attestation est délivrée pour servir et valoir ce que de droit.</p>'
+      +'<div class="att-sign"><div>Fait à Abidjan, le '+dateEmission+'</div>'
+        +'<div style="margin-top:40px">L\'Administrateur Général</div>'
+        +'<div style="font-weight:700;margin-top:4px">BILE A. HENRI</div>'
+      +'</div>'
+    +'</div>'
+  +'</div>';
+}
+
+function genererAttestation(id){
+  const c = D.clients.find(x=>x.id===id); if(!c) return;
+  if(c.statutDossier !== 'Apport soldé'){
+    toast("L'apport initial n'est pas encore entièrement soldé pour ce dossier.", 'warning');
+    return;
+  }
+  if(!identificationComplete(c)){
+    toast("Merci de compléter d'abord l'identification légale du client.", 'info');
+    ouvrirIdentification(id, true);
+    return;
+  }
+  const css = 'body{margin:0;font-family:\'Segoe UI\',Arial,sans-serif;color:#222}'
+    +'.att-wrap{max-width:750px;margin:0 auto}'
+    +'.att-head{background:#00294d;color:white;padding:22px 30px}'
+    +'.att-logo{font-size:24px;font-weight:800;letter-spacing:-0.5px}'
+    +'.att-logo span{color:#f9c865}'
+    +'.att-head-sub{font-size:11px;opacity:.75;margin-top:4px}'
+    +'.att-band{background:#f36f00;color:white;padding:8px 30px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px}'
+    +'.att-body{padding:26px 30px;font-size:13px;line-height:1.65;text-align:justify}'
+    +'.att-body p{margin:0 0 12px}'
+    +'.att-atteste{text-align:center;margin:18px 0}'
+    +'.att-sign{margin-top:30px;text-align:right;font-size:13px}'
+    +'@media print{@page{margin:14mm}body{margin:0}}';
+  const html = buildAttestationHTML(c);
+  const page = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Attestation de souscription — '+c.nom+'</title><style>'+css+'</style></head><body>'+html+'</body></html>';
+  const w = window.open('', '_blank');
+  w.document.write(page);
+  w.document.close();
+  setTimeout(function(){ w.focus(); w.print(); }, 400);
 }
 
 // ============================================================
