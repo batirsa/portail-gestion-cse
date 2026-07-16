@@ -580,6 +580,7 @@ tr:hover td{background:#fafbfc}
           <option value="dir_commercial">Directeur Commercial</option>
           <option value="agent_recouvrement">Agent Recouvrement</option>
           <option value="recouv">Directrice Recouvrement (lecture seule)</option>
+          <option value="chef_agence">Chef d'Agence</option>
           <option value="admin">Administrateur</option>
         </select>
       </div>
@@ -1130,7 +1131,7 @@ async function doLogin(){
     authToken = data.token;
     currentUser = data.user;
     localStorage.setItem(TOKEN_KEY, authToken);
-    if(!['agent_recouvrement','recouv','dir_commercial','admin'].includes(currentUser.role)){
+    if(!['agent_recouvrement','recouv','dir_commercial','chef_agence','admin'].includes(currentUser.role)){
       throw new Error("Ce compte n'a pas accès au module de gestion & recouvrement.");
     }
     if(currentUser.role==='dir_commercial' && !currentUser.accesGestion){
@@ -1164,7 +1165,7 @@ async function initApp(){
   try{
     const data = await apiFetch('/auth/me');
     currentUser = data.user;
-    if(!['agent_recouvrement','recouv','dir_commercial','admin'].includes(currentUser.role)){
+    if(!['agent_recouvrement','recouv','dir_commercial','chef_agence','admin'].includes(currentUser.role)){
       throw new Error('Rôle non autorisé');
     }
     if(currentUser.role==='dir_commercial' && !currentUser.accesGestion){
@@ -1210,7 +1211,7 @@ async function autoRefreshTick(){
 function renderSessionBadge(){
   const el = document.getElementById('sessionBadge');
   if(!el || !currentUser) return;
-  const roleLabel = currentUser.titre || { agent_recouvrement:'Agent Recouvrement', recouv:'Directrice Recouvrement (lecture seule)', dir_commercial:'Directeur Commercial (lecture seule)', admin:'Administrateur' }[currentUser.role] || currentUser.role;
+  const roleLabel = currentUser.titre || { agent_recouvrement:'Agent Recouvrement', recouv:'Directrice Recouvrement (lecture seule)', dir_commercial:'Directeur Commercial (lecture seule)', chef_agence:"Chef d'Agence", admin:'Administrateur' }[currentUser.role] || currentUser.role;
   el.innerHTML = `<span>👤 <b>${currentUser.fullName||currentUser.username}</b> · ${roleLabel}</span><button onclick="logout()">Déconnexion</button>`;
   // La Directrice Recouvrement et les Directeurs Commerciaux sont en lecture seule côté serveur : on masque les actions d'écriture.
   document.body.classList.toggle('readonly-mode', currentUser.role === 'recouv' || currentUser.role === 'dir_commercial');
@@ -4130,6 +4131,7 @@ const ROLE_LABELS = {
   dir_commercial: 'Directeur Commercial',
   agent_recouvrement: 'Agent Recouvrement',
   recouv: 'Directrice Recouvrement',
+  chef_agence: "Chef d'Agence",
   admin: 'Administrateur',
 };
 
