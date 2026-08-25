@@ -1039,9 +1039,14 @@ tr:hover td{background:#fafbfc}
     </div>
     <div class="modal-body">
       <div class="form-grid">
-        <div class="form-group" style="grid-column:1/-1">
+        <div class="form-group" style="grid-column:1/-1;position:relative">
           <label>Client *</label>
-          <select id="ff_client" onchange="infoClientFrais()"><option value="">Choisir un client...</option></select>
+          <input type="text" id="ff_clientSearch" placeholder="🔍 Nom du client ou N° dossier..." autocomplete="off"
+                 oninput="document.getElementById('ff_client').value='';document.getElementById('ff_info').style.display='none';rechercherClientFrais(this.value)"
+                 onfocus="rechercherClientFrais(this.value)"
+                 onblur="setTimeout(()=>{const b=document.getElementById('ff_clientSuggestions'); if(b) b.style.display='none';},150)">
+          <input type="hidden" id="ff_client">
+          <div id="ff_clientSuggestions" style="display:none;position:absolute;z-index:20;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.15);max-height:260px;overflow-y:auto;width:100%;margin-top:2px"></div>
         </div>
         <div id="ff_info" style="grid-column:1/-1;display:none">
           <div class="alert alert-info" id="ff_infoText"></div>
@@ -3871,15 +3876,9 @@ function genRecuFrais(){
 }
 
 function ouvrirAjoutFrais(){
-  // Pré-remplir la liste clients
-  const sel = document.getElementById('ff_client');
-  sel.innerHTML = '<option value="">Choisir un client...</option>';
-  D.clients.forEach(c => {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = (c.dossier ? c.dossier+' — ' : '') + c.nom + (c.type ? ' ('+c.type+')' : '');
-    sel.appendChild(opt);
-  });
+  document.getElementById('ff_client').value = '';
+  document.getElementById('ff_clientSearch').value = '';
+  document.getElementById('ff_clientSuggestions').style.display = 'none';
   // Réinitialiser les champs
   document.getElementById('ff_date').value = today();
   document.getElementById('ff_montant').value = FRAIS_DEF;
@@ -3889,6 +3888,36 @@ function ouvrirAjoutFrais(){
   document.getElementById('ff_obs').value = '';
   document.getElementById('ff_info').style.display = 'none';
   ouvrir('mFrais');
+}
+
+// Recherche en direct par nom ou N° de dossier, comme pour les versements.
+function rechercherClientFrais(q){
+  const box = document.getElementById('ff_clientSuggestions');
+  q = (q||'').trim().toLowerCase();
+  if(!q){ box.style.display='none'; box.innerHTML=''; return; }
+  const matches = D.clients.filter(c=>{
+    const txt = ((c.nom||'')+' '+(c.dossier||'')+' '+(c.id||'')).toLowerCase();
+    return txt.includes(q);
+  }).slice(0,15);
+  if(!matches.length){
+    box.innerHTML = '<div style="padding:10px 14px;color:var(--gray);font-size:13px">Aucun client trouvé.</div>';
+    box.style.display='block';
+    return;
+  }
+  box.innerHTML = matches.map(c=>`
+    <div style="padding:8px 14px;cursor:pointer" onmouseover="this.style.background='#f7f8fa'" onmouseout="this.style.background=''" onmousedown="choisirClientFrais('${c.id}')">
+      <strong>${c.nom}</strong> <span style="color:var(--gray);font-size:12px">(${c.dossier||c.id})${c.type?' · '+c.type:''}</span>
+    </div>
+  `).join('');
+  box.style.display='block';
+}
+
+function choisirClientFrais(id){
+  const c = D.clients.find(x=>x.id===id);
+  document.getElementById('ff_client').value = id;
+  document.getElementById('ff_clientSearch').value = c ? `${(c.dossier?c.dossier+' — ':'')}${c.nom}${c.type?' ('+c.type+')':''}` : '';
+  document.getElementById('ff_clientSuggestions').style.display = 'none';
+  infoClientFrais();
 }
 
 function infoClientFrais(){
