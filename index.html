@@ -683,6 +683,21 @@ tr:hover td{background:#fafbfc}
   </div>
 </div>
 
+<!-- ===== MODAL ÉTAT DE PAIEMENT ===== -->
+<div class="modal-overlay" id="mEtatPaiement">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">📊 État de paiement</div>
+      <button class="modal-close" onclick="fermer('mEtatPaiement')">×</button>
+    </div>
+    <div class="modal-body" style="padding:0" id="mEtatPaiementBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="fermer('mEtatPaiement')">Fermer</button>
+      <button class="btn btn-orange" onclick="imprimerEtatPaiement()">🖨 Imprimer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL CORRECTION VERSEMENT ===== -->
 <div class="modal-overlay" id="mCorrectionVers">
   <div class="modal modal-lg">
@@ -1106,6 +1121,7 @@ tr:hover td{background:#fafbfc}
   </div>
 </div>
 <div id="recuPrintZone" style="display:none"></div>
+<div id="etatPrintZone" style="display:none"></div>
 
 <script>
 // ============================================================
@@ -2000,12 +2016,12 @@ function ouvrirFiche(id){
             +'<td style="font-size:11px">'+(v.ref||'-')+'</td>'
             +'<td>'+statutBadge+'</td>'
             +'<td style="white-space:nowrap">'
-              +(!annule?('<button class="btn btn-sm btn-gold" onclick="ouvrirRecu(\'"+c.id+"\',\'"+v.id+"\')">🧾</button> '):'')
-              +'<button class="btn btn-sm btn-outline" onclick="ouvrirCorrectionVers(\'"+v.id+"\')" title="Corriger">🔧</button>'
+              +(!annule?('<button class="btn btn-sm btn-gold" onclick="ouvrirRecu(\''+c.id+'\',\''+v.id+'\')">🧾</button> '):'')
+              +'<button class="btn btn-sm btn-outline" onclick="ouvrirCorrectionVers(\''+v.id+'\')" title="Corriger">🔧</button>'
             +'</td>'
           +'</tr>';}).join('')
-          +'<tr style="background:#f7f8fa"><td colspan="3"><strong>TOTAL VERSÉ</strong></td>'
-          +'<td style="font-weight:700;color:var(--navy)">'+fmt(vers.filter(function(v){return !v.annule;}).reduce(function(s,v){return s+(v.montant||0);},0))+'</td><td colspan="4"></td></tr>'
+          +'<tr style="background:#f7f8fa"><td colspan="3"><strong>TOTAL VERSÉ <span style="font-weight:400;font-size:10px;color:var(--gray)">(hors frais de dossier)</span></strong></td>'
+          +'<td style="font-weight:700;color:var(--navy)">'+fmt(vers.filter(function(v){return !v.annule&&v.type!=='Frais de dossier';}).reduce(function(s,v){return s+(v.montant||0);},0))+'</td><td colspan="4"></td></tr>'
           +'</tbody></table></div>')
         : '<div class="alert alert-warning">Aucun versement enregistré.</div>'
       }
@@ -2016,6 +2032,7 @@ function ouvrirFiche(id){
     <button class="btn btn-success btn-sm" onclick="xlsxFiche('${id}')">⬇ Excel</button>
     <button class="btn btn-outline btn-sm" onclick="pdfFiche('${id}')">🖨 PDF</button>
     ${c.vague?`<button class="btn btn-gold btn-sm" onclick="imprimerEcheancier('${id}')">📄 Échéancier</button>`:''}
+    <button class="btn btn-outline btn-sm" onclick="ouvrirEtatPaiement('${id}')">📊 État de paiement</button>
     ${c.statutDossier==='Apport soldé'?`<button class="btn btn-navy btn-sm" onclick="genererAttestation('${id}')">🎖 Attestation de souscription</button>`:''}
     <button class="btn btn-orange" onclick="fermer('mFiche');ouvrirAjoutVersement('${id}')">+ Versement</button>`;
   ouvrir('mFiche');
@@ -2329,6 +2346,87 @@ function imprimerRecu(){
   setTimeout(()=>zone.style.display='none',1000);
 }
 
+// ============================================================
+// ÉTAT DE PAIEMENT — relevé imprimable de tous les versements
+// d'un client (hors frais de dossier, qui sont des frais annexes
+// et ne participent pas au calcul de l'apport/solde du logement).
+// ============================================================
+function buildEtatPaiementHTML(c){
+  const tv = tvClient(c.id), reste = resteC(c), p = pct(tv, coutTotal(c));
+  const versements = D.versements
+    .filter(v=>v.clientId===c.id && v.type!=='Frais de dossier')
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const dateEmis = new Date().toLocaleDateString('fr-FR');
+  const projet = 'Cité Sainte-Élisabeth · '+(c.type||'?')+' · '+(c.appt||'À définir')+(c.ilot?' · '+c.ilot:'')+' '+(c.bat||'');
+
+  const lignes = versements.length ? versements.map((v,i)=>{
+    const annule = v.annule===true;
+    return '<tr style="'+(annule?'opacity:.5':'')+'">'
+      +'<td>'+(i+1)+'</td>'
+      +'<td>'+(v.date||'-')+'</td>'
+      +'<td>'+(annule?('<s>'+(v.designation||'-')+'</s>'):v.designation||'-')+(annule?' <span style="color:#a32d2d;font-size:10px">(annulé)</span>':'')+'</td>'
+      +'<td style="font-weight:600;color:'+(annule?'var(--gray)':'#1a7a4a')+'">'+(annule?('<s>'+fmt(v.montant)+'</s>'):fmt(v.montant))+'</td>'
+      +'<td>'+(v.mode||'-')+'</td>'
+      +'<td style="font-size:11px">'+(v.ref||'-')+'</td>'
+    +'</tr>';
+  }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--gray);padding:14px">Aucun versement enregistré (hors frais de dossier).</td></tr>';
+
+  return '<div class="recu-wrap" id="etatContent" style="max-width:700px">'
+    +'<div class="recu-head">'
+      +'<div>'
+        +'<div style="font-size:22px;font-weight:800;letter-spacing:-0.5px">BÂTIR S.A.</div>'
+        +'<div style="font-size:11px;opacity:.7;margin-top:3px">Promotion immobilière · San-Pédro, Côte d\'Ivoire</div>'
+      +'</div>'
+      +'<div style="text-align:right">'
+        +'<div style="font-size:11px;opacity:.6">État de paiement</div>'
+        +'<div style="font-size:11px;opacity:.6">Édité le '+dateEmis+'</div>'
+      +'</div>'
+    +'</div>'
+    +'<div class="recu-band">ÉTAT DE PAIEMENT — DOSSIER '+(c.dossier||'-')+'</div>'
+    +'<div class="recu-body">'
+      +'<div style="background:#e8f0f7;border-radius:7px;padding:9px 14px;margin-bottom:16px;font-size:12px;color:#00294d;font-weight:600">📍 '+projet+'</div>'
+      +'<div style="margin-bottom:14px">'
+        +'<div style="font-size:10px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Informations client</div>'
+        +'<div class="recu-grid">'
+          +'<div class="recu-item"><span class="rl">N° Dossier</span><span class="rv">'+(c.dossier||'-')+'</span></div>'
+          +'<div class="recu-item"><span class="rl">Commercial</span><span class="rv">'+(c.commercial||'-')+'</span></div>'
+          +'<div class="recu-item"><span class="rl">Nom & Prénoms</span><span class="rv">'+c.nom+'</span></div>'
+          +'<div class="recu-item"><span class="rl">Contact</span><span class="rv">'+(c.contact||'-')+'</span></div>'
+        +'</div>'
+      +'</div>'
+      +'<div class="recu-grid" style="margin-bottom:16px">'
+        +'<div class="recu-item"><span class="rl">Prix du logement</span><span class="rv">'+fmt(coutTotal(c))+'</span></div>'
+        +'<div class="recu-item"><span class="rl">Total versé (hors frais de dossier)</span><span class="rv" style="color:#1a7a4a">'+fmt(tv)+'</span></div>'
+        +'<div class="recu-item"><span class="rl">Reste à payer</span><span class="rv" style="color:'+(reste>0?'#a32d2d':'#1a7a4a')+'">'+fmt(reste)+'</span></div>'
+        +'<div class="recu-item"><span class="rl">Progression</span><span class="rv">'+p+' %</span></div>'
+      +'</div>'
+      +'<div style="font-size:10px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Détail des versements</div>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">'
+        +'<thead><tr style="background:#f7f8fa;text-align:left"><th style="padding:6px 8px">#</th><th style="padding:6px 8px">Date</th><th style="padding:6px 8px">Désignation</th><th style="padding:6px 8px">Montant</th><th style="padding:6px 8px">Mode</th><th style="padding:6px 8px">Référence</th></tr></thead>'
+        +'<tbody>'+lignes+'</tbody>'
+        +'<tfoot><tr style="background:#f7f8fa;font-weight:700"><td colspan="3" style="padding:6px 8px;text-align:right">TOTAL VERSÉ</td><td style="padding:6px 8px;color:#00294d">'+fmt(tv)+'</td><td colspan="2"></td></tr></tfoot>'
+      +'</table>'
+      +'<p style="font-size:10px;color:var(--gray);font-style:italic">Les frais de dossier (frais annexes non imputables au prix du logement) ne figurent pas dans cet état.</p>'
+    +'</div>'
+  +'</div>';
+}
+
+function ouvrirEtatPaiement(clientId){
+  const c=D.clients.find(x=>x.id===clientId);
+  if(!c) return;
+  const html=buildEtatPaiementHTML(c);
+  document.getElementById('mEtatPaiementBody').innerHTML=html;
+  document.getElementById('etatPrintZone').innerHTML=html;
+  ouvrir('mEtatPaiement');
+}
+
+function imprimerEtatPaiement(){
+  const zone=document.getElementById('etatPrintZone');
+  zone.style.display='block';
+  window.print();
+  setTimeout(()=>zone.style.display='none',1000);
+}
+
 function pdfRecu(){
   if(!_recuData)return;
   const {c,v}=_recuData;
@@ -2408,13 +2506,13 @@ function renderVersements(){
       <td><span class="chip">${v.commercial||'-'}</span></td>
       <td>${statutBadge}</td>
       <td style="white-space:nowrap">
-        ${c&&!annule?('<button class="btn btn-sm btn-gold" onclick="ouvrirRecu(\'"+c.id+"\',\'"+v.id+"\')" title="Voir le reçu">🧾</button> '):''}
+        ${c&&!annule ? `<button class="btn btn-sm btn-gold" onclick="ouvrirRecu('${c.id}','${v.id}')" title="Voir le reçu">🧾</button> ` : ''}
         <button class="btn btn-sm btn-outline" onclick="ouvrirCorrectionVers('${v.id}')" title="Corriger ce versement" style="margin-left:2px">🔧</button>
       </td>
     </tr>`;
   }).join('')}
-  <tr style="background:#f7f8fa;font-weight:700"><td colspan="7" style="text-align:right">TOTAL VERSÉ</td>
-    <td style="color:var(--navy)">${fmt(list.filter(v=>!v.annule).reduce((s,v)=>s+(v.montant||0),0))}</td><td colspan="5"></td></tr>
+  <tr style="background:#f7f8fa;font-weight:700"><td colspan="7" style="text-align:right">TOTAL VERSÉ <span style="font-weight:400;font-size:10px;color:var(--gray)">(hors frais de dossier)</span></td>
+    <td style="color:var(--navy)">${fmt(list.filter(v=>!v.annule&&v.type!=='Frais de dossier').reduce((s,v)=>s+(v.montant||0),0))}</td><td colspan="5"></td></tr>
   </tbody>`;
 }
 
