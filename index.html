@@ -586,6 +586,7 @@ tr:hover td{background:#fafbfc}
             <input type="checkbox" id="fv_promo" onchange="toggleFvPromo()" style="width:auto">
             🎉 Promotion en cours — appliquer un bonus déduit du reste à payer
           </label>
+          <div style="font-size:11px;color:#a06800;margin-top:4px">Offre valable jusqu'au <strong>31 décembre 2026</strong> inclus.</div>
           <div id="fv_promoZone" style="display:none;margin-top:10px;align-items:flex-end;gap:12px;flex-wrap:wrap">
             <div class="form-group" style="margin-bottom:0;max-width:140px">
               <label style="font-size:11px">Taux (%)</label>
@@ -2614,6 +2615,12 @@ async function sauvegarderVersement(){
   const montant=parseFloat(document.getElementById('fv_montant').value)||0;
   if(!montant){ alert('Le montant est obligatoire.'); return; }
   const c=D.clients.find(x=>x.id===clientId);
+  const promoActive = document.getElementById('fv_promo').checked;
+  const promoTaux = parseFloat(document.getElementById('fv_promoTaux').value)||0;
+  const noteOffre = (promoActive && promoTaux>0)
+    ? `Le client a bénéficié d'une réduction de ${promoTaux}% sur ce versement, dans le cadre de l'offre promotionnelle "${promoTaux}% sur chaque versement" en vigueur jusqu'au 31 décembre 2026.`
+    : '';
+  const obsSaisie = document.getElementById('fv_obs').value.trim();
   const body={
     dossier: clientId,
     nom: c?c.nom:'',
@@ -2623,7 +2630,7 @@ async function sauvegarderVersement(){
     mode:document.getElementById('fv_mode').value,
     ref:document.getElementById('fv_ref').value,
     commercial:document.getElementById('fv_commercial').value,
-    obs:document.getElementById('fv_obs').value,
+    obs: noteOffre ? (obsSaisie ? `${obsSaisie}\n${noteOffre}` : noteOffre) : obsSaisie,
   };
   try{
     const { paiement } = await apiFetch('/paiements', { method:'POST', body: JSON.stringify(body) });
@@ -2631,20 +2638,23 @@ async function sauvegarderVersement(){
     D.versements.push(paiement);
 
     let bonusMontant = 0;
-    if(document.getElementById('fv_promo').checked){
-      const taux = parseFloat(document.getElementById('fv_promoTaux').value)||0;
-      bonusMontant = Math.round(montant*taux/100);
+    if(promoActive){
+      bonusMontant = Math.round(montant*promoTaux/100);
+      const DATE_FIN_PROMO = '2026-12-31';
+      if(body.date > DATE_FIN_PROMO){
+        toast(`⚠️ Attention : l'offre de ${promoTaux}% a pris fin le 31/12/2026. Le bonus a quand même été appliqué car la case était cochée — décoche-la si ce n'est pas voulu.`,'warning');
+      }
       if(bonusMontant>0){
         const bodyBonus = {
           dossier: clientId,
           nom: c?c.nom:'',
           date: body.date,
-          designation: `🎉 Bonus promotion ${taux}% (sur versement du ${body.date})`,
+          designation: `🎉 Bonus promotion ${promoTaux}% (sur versement du ${body.date})`,
           montant: bonusMontant,
           mode: 'Bonus promotionnel',
           ref: paiement.id ? ('PROMO-'+paiement.id) : '',
           commercial: body.commercial,
-          obs: `Bonus automatique de ${taux}% appliqué sur le versement de ${fmt(montant)} F CFA du ${body.date}.`,
+          obs: `${noteOffre} Bonus calculé sur le versement de ${fmt(montant)} F CFA du ${body.date}.`,
         };
         const { paiement: paiementBonus } = await apiFetch('/paiements', { method:'POST', body: JSON.stringify(bodyBonus) });
         paiementBonus.clientId = paiementBonus.dossier;
