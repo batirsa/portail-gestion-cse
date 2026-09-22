@@ -2241,6 +2241,13 @@ function buildRecuHTML(c,v,num){
   const dateEmis = new Date().toLocaleDateString('fr-FR');
   const projet = 'Cité Sainte-Élisabeth · '+(c.type||'?')+' · '+(c.appt||'À définir')+(c.ilot?' · '+c.ilot:'')+' '+(c.bat||'');
   const sigComm = 'La Trésorière';
+  // Un versement peut avoir bénéficié d'un bonus promotionnel (ligne distincte,
+  // liée via v.ref === 'PROMO-'+v.id) — ou ÊTRE lui-même cette ligne de bonus.
+  // Dans les deux cas, la réduction doit être clairement visible sur le reçu
+  // remis au client, pas seulement dans l'historique interne.
+  const bonusLie = D.versements.find(function(x){ return x.ref === 'PROMO-'+v.id && !x.annule; });
+  const estLigneBonus = v.mode === 'Bonus promotionnel';
+  const noteAffichee = v.obs || (bonusLie ? bonusLie.obs : '') || '';
 
   return '<div class="recu-wrap" id="recuContent">'
     // En-tête navy
@@ -2287,6 +2294,14 @@ function buildRecuHTML(c,v,num){
         +'</div>'
         +'<div style="font-size:24px;font-weight:800;color:#00294d">'+fmt(v.montant)+'</div>'
       +'</div>'
+      // Encadré promotion (bonus lié à ce versement, ou ce versement EST le bonus)
+      +((bonusLie || estLigneBonus)
+        ? '<div style="background:#fff8e1;border:1.5px solid #f9c865;border-radius:8px;padding:12px 16px;margin-bottom:16px">'
+          +'<div style="font-size:11px;font-weight:800;color:#7a5000;margin-bottom:6px">🎉 '+(estLigneBonus ? 'BONUS PROMOTIONNEL' : 'OFFRE PROMOTIONNELLE APPLIQUÉE')+'</div>'
+          +(bonusLie ? '<div style="font-size:12px;color:#555">Un bonus supplémentaire de <strong style="color:#1a7a4a">'+fmt(bonusLie.montant)+'</strong> a été déduit du reste à payer au titre de cette offre.</div>' : '')
+          +(noteAffichee ? '<div style="font-size:11px;color:#7a5000;margin-top:6px;font-style:italic">'+noteAffichee+'</div>' : '')
+        +'</div>'
+        : '')
       // Situation financière
       +'<div style="background:#f7f8fa;border-radius:8px;padding:14px 16px;margin-bottom:18px;border:1px solid #eee">'
         +'<div style="font-size:10px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Situation après ce versement</div>'
