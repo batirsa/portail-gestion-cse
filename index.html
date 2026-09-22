@@ -569,7 +569,7 @@ tr:hover td{background:#fafbfc}
         </div>
         <div class="form-group"><label>Date *</label><input id="fv_date" type="date"></div>
         <div class="form-group"><label>Désignation</label><input id="fv_desig" placeholder="Versement 2, Solde..."></div>
-        <div class="form-group"><label>Montant (F CFA) *</label><input id="fv_montant" type="number"></div>
+        <div class="form-group"><label>Montant (F CFA) *</label><input id="fv_montant" type="number" oninput="majApercuPromo()"></div>
         <div class="form-group"><label>Mode paiement</label>
           <select id="fv_mode"><option>Espèces</option><option>Virement</option><option>Chèque</option><option>Mobile Money</option></select>
         </div>
@@ -580,6 +580,19 @@ tr:hover td{background:#fafbfc}
             <option>Aliman</option><option>Kacou</option><option>Olivier</option>
             <option>Innocent</option><option>Fatou</option><option>Bressue</option><option>Ezebio</option>
           </select>
+        </div>
+        <div class="form-group full" style="background:#fff8e1;border:1px solid #f9c865;border-radius:8px;padding:12px 14px;margin-top:2px">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:700;color:#7a5000;cursor:pointer;margin-bottom:0">
+            <input type="checkbox" id="fv_promo" onchange="toggleFvPromo()" style="width:auto">
+            🎉 Promotion en cours — appliquer un bonus déduit du reste à payer
+          </label>
+          <div id="fv_promoZone" style="display:none;margin-top:10px;align-items:flex-end;gap:12px;flex-wrap:wrap">
+            <div class="form-group" style="margin-bottom:0;max-width:140px">
+              <label style="font-size:11px">Taux (%)</label>
+              <input id="fv_promoTaux" type="number" value="5" min="1" max="50" step="0.5" oninput="majApercuPromo()">
+            </div>
+            <div style="font-size:13px;color:#7a5000" id="fv_promoApercu">Bonus : 0 F CFA</div>
+          </div>
         </div>
       </div>
       <div class="form-group" style="margin-top:10px"><label>Observation</label><textarea id="fv_obs" rows="2"></textarea></div>
@@ -2527,6 +2540,9 @@ function ouvrirAjoutVersement(preId){
   document.getElementById('fv_clientSuggestions').style.display='none';
   document.getElementById('fv_date').value=today();
   document.getElementById('fv_info').style.display='none';
+  document.getElementById('fv_promo').checked=false;
+  document.getElementById('fv_promoTaux').value=5;
+  toggleFvPromo();
   if(preId) infoClientVers();
   ouvrir('mVersement');
 }
@@ -2574,6 +2590,24 @@ function infoClientVers(){
   if(c.commercial&&!document.getElementById('fv_commercial').value) document.getElementById('fv_commercial').value=c.commercial;
 }
 
+// Bonus promotionnel : quand une promotion est en cours (ex. 5% sur chaque
+// versement), une ligne DISTINCTE est créée en plus du versement réel — elle
+// compte dans le total versé (donc réduit le reste à payer du client) mais
+// reste clairement identifiée comme un bonus, pas un encaissement réel, pour
+// ne jamais fausser la caisse (rapprochement espèces/chèques/virements).
+function toggleFvPromo(){
+  const on = document.getElementById('fv_promo').checked;
+  document.getElementById('fv_promoZone').style.display = on ? 'flex' : 'none';
+  majApercuPromo();
+}
+
+function majApercuPromo(){
+  const montant = parseFloat(document.getElementById('fv_montant').value)||0;
+  const taux = parseFloat(document.getElementById('fv_promoTaux').value)||0;
+  const bonus = Math.round(montant*taux/100);
+  document.getElementById('fv_promoApercu').textContent = `Bonus : ${fmt(bonus)} F CFA (déduit du reste à payer)`;
+}
+
 async function sauvegarderVersement(){
   const clientId=document.getElementById('fv_client').value;
   if(!clientId){ alert('Choisissez un client.'); return; }
@@ -2595,8 +2629,31 @@ async function sauvegarderVersement(){
     const { paiement } = await apiFetch('/paiements', { method:'POST', body: JSON.stringify(body) });
     paiement.clientId = paiement.dossier;
     D.versements.push(paiement);
+
+    let bonusMontant = 0;
+    if(document.getElementById('fv_promo').checked){
+      const taux = parseFloat(document.getElementById('fv_promoTaux').value)||0;
+      bonusMontant = Math.round(montant*taux/100);
+      if(bonusMontant>0){
+        const bodyBonus = {
+          dossier: clientId,
+          nom: c?c.nom:'',
+          date: body.date,
+          designation: `🎉 Bonus promotion ${taux}% (sur versement du ${body.date})`,
+          montant: bonusMontant,
+          mode: 'Bonus promotionnel',
+          ref: paiement.id ? ('PROMO-'+paiement.id) : '',
+          commercial: body.commercial,
+          obs: `Bonus automatique de ${taux}% appliqué sur le versement de ${fmt(montant)} F CFA du ${body.date}.`,
+        };
+        const { paiement: paiementBonus } = await apiFetch('/paiements', { method:'POST', body: JSON.stringify(bodyBonus) });
+        paiementBonus.clientId = paiementBonus.dossier;
+        D.versements.push(paiementBonus);
+      }
+    }
+
     fermer('mVersement'); renderVersements(); majBadgeAlertes();
-    toast(`✅ Versement de ${fmt(montant)} enregistré.`,'success');
+    toast(`✅ Versement de ${fmt(montant)} enregistré.${bonusMontant?' 🎉 + bonus promo de '+fmt(bonusMontant)+' F.':''}`,'success');
     if(confirm('Versement enregistré ! Générer le reçu maintenant ?')){
       if(c) ouvrirRecu(c.id, paiement.id);
     }
