@@ -1437,6 +1437,37 @@ function renderDashboard(){
 // ============================================================
 // CLIENTS
 // ============================================================
+// ── Offre exceptionnelle 65 appartements ──
+// Le serveur calcule l'état de l'offre (promoStatut) et applique lui-même le
+// retour au prix normal : ici on ne fait qu'AFFICHER, pour que le recouvrement
+// comprenne d'où vient le prix d'un dossier.
+function badgeOffreGestion(c){
+  if(!c || !c.promoOffre) return '';
+  const limite = (c.promoDateLimite||'2026-12-31').split('-').reverse().join('/');
+  if(c.promoStatut==='Expirée') return ' <span class="badge" style="background:#fdeaea;color:#a32d2d;font-size:10px" title="Apport promotionnel non soldé au '+limite+' : prix normal appliqué">⏰ Promo expirée</span>';
+  if(c.promoStatut==='Maintenue') return ' <span class="badge" style="background:#e8f5ee;color:#1a7a4a;font-size:10px" title="Apport promotionnel soldé dans les délais">✅ Promo acquise</span>';
+  return ' <span class="badge" style="background:#fdeee6;color:#a04000;font-size:10px" title="Apport promotionnel à solder avant le '+limite+'">🔥 Promo → '+limite+'</span>';
+}
+
+function bandeauOffreGestion(c){
+  if(!c || !c.promoOffre) return '';
+  const limite = new Date((c.promoDateLimite||'2026-12-31')+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});
+  const requis = c.promoApportRequis||0, verse = c.promoApportVerse||0;
+  const reste = Math.max(0, requis-verse);
+  let couleur, fond, texte;
+  if(c.promoStatut==='Expirée'){
+    fond='#fdeaea'; couleur='#a32d2d';
+    texte='⏰ <b>Offre exceptionnelle expirée</b> — l\'apport promotionnel ('+fmt(requis)+') n\'a pas été soldé au '+limite+' (versé : '+fmt(verse)+'). Le dossier est repassé <b>automatiquement au prix normal : '+fmt(c.prix)+'</b> (prix promotionnel perdu : '+fmt(c.prixPromo||0)+'). L\'échéancier enregistré date de l\'offre et doit être recalculé.';
+  } else if(c.promoStatut==='Maintenue'){
+    fond='#e8f5ee'; couleur='#1a7a4a';
+    texte='✅ <b>Offre exceptionnelle acquise</b> — apport promotionnel soldé dans les délais ('+fmt(verse)+' / '+fmt(requis)+'). Prix promotionnel garanti : <b>'+fmt(c.prix)+'</b> (au lieu de '+fmt(c.promoPrixNormal||0)+').';
+  } else {
+    fond='#fdeee6'; couleur='#7a3300';
+    texte='🔥 <b>Offre exceptionnelle en cours</b> — prix promotionnel '+fmt(c.prix)+' (au lieu de '+fmt(c.promoPrixNormal||0)+'). Apport promotionnel : <b>'+fmt(verse)+' / '+fmt(requis)+'</b>, reste <b>'+fmt(reste)+'</b> à verser avant le <b>'+limite+'</b>, sinon retour automatique au prix normal.';
+  }
+  return '<div style="margin-bottom:14px;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.6;background:'+fond+';color:'+couleur+'">'+texte+'</div>';
+}
+
 function renderClients(){
   const s=(document.getElementById('clientSearch')||{}).value||'';
   const comm=(document.getElementById('fComm')||{}).value||'';
@@ -1464,7 +1495,7 @@ function renderClients(){
     const vagueLabel = c.vague ? `V${c.vague}` : '—';
     return `<tr>
       <td style="color:var(--gray);font-size:11px">${i+1}</td>
-      <td><span class="badge badge-navy">${c.dossier||'-'}</span></td>
+      <td><span class="badge badge-navy">${c.dossier||'-'}</span>${badgeOffreGestion(c)}</td>
       <td><strong>${c.nom}</strong>${c.contact?('<br><span style="font-size:11px;color:var(--gray)">'+c.contact+'</span>'):''}</td>
       <td><span class="chip">${c.commercial||'-'}</span></td>
       <td><span class="badge badge-gray">${c.type||'-'}</span></td>
@@ -1974,6 +2005,7 @@ function ouvrirFiche(id){
   const tv=tvClient(id),ct=coutTotal(c),r=resteC(c),p=pct(tv,ct);
   document.getElementById('mFicheTitle').textContent=`Fiche — ${c.nom}`;
   document.getElementById('mFicheBody').innerHTML=`
+    ${bandeauOffreGestion(c)}
     <div class="fiche-section"><h3>Identification</h3><div class="fiche-grid">
       <div class="fiche-item"><span class="fi-label">N° Dossier</span><span class="fi-value">${c.dossier||'-'}</span></div>
       <div class="fiche-item"><span class="fi-label">Nom</span><span class="fi-value">${c.nom}</span></div>
